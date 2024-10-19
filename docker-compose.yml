@@ -1,0 +1,98 @@
+version: '3.8'
+
+services:
+  weaviate:
+    image: cr.weaviate.io/semitechnologies/weaviate:1.27.0
+    command:
+      - --host
+      - 0.0.0.0
+      - --port
+      - '8080'
+      - --scheme
+      - http
+    ports:
+      - "8080:8080"
+      - "50051:50051"
+    volumes:
+      - ./weaviate_data:/var/lib/weaviate
+    restart: on-failure:0
+    environment:
+      TRANSFORMERS_INFERENCE_API: 'http://t2v-transformers:8080'
+      NER_INFERENCE_API: 'http://ner-transformers:8080'
+      SUM_INFERENCE_API: 'http://sum-transformers:8080'
+      SPELLCHECK_INFERENCE_API: 'http://text-spellcheck:8080'
+      RERANKER_INFERENCE_API: 'http://reranker-transformers:8080'
+      QUERY_DEFAULTS_LIMIT: 25
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
+      PERSISTENCE_DATA_PATH: '/var/lib/weaviate'
+      DEFAULT_VECTORIZER_MODULE: 'text2vec-transformers'
+      ENABLE_MODULES: 'text2vec-transformers,ner-transformers,sum-transformers,text-spellcheck,ref2vec-centroid,reranker-transformers'
+      CLUSTER_HOSTNAME: 'node1'
+
+  t2v-transformers:
+    image: cr.weaviate.io/semitechnologies/transformers-inference:sentence-transformers-multi-qa-mpnet-base-cos-v1
+    environment:
+      ENABLE_CUDA: '1'
+      NVIDIA_VISIBLE_DEVICES: 'all'
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities:
+                - 'gpu'
+
+  ner-transformers:
+    image: cr.weaviate.io/semitechnologies/ner-transformers:dbmdz-bert-large-cased-finetuned-conll03-english
+    environment:
+      ENABLE_CUDA: '1'
+      NVIDIA_VISIBLE_DEVICES: 'all'
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities:
+                - 'gpu'
+
+  sum-transformers:
+    image: cr.weaviate.io/semitechnologies/sum-transformers:facebook-bart-large-cnn-1.0.0
+    environment:
+      ENABLE_CUDA: '1'
+      NVIDIA_VISIBLE_DEVICES: 'all'
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities:
+                - 'gpu'
+
+  text-spellcheck:
+    image: cr.weaviate.io/semitechnologies/text-spellcheck-model:pyspellchecker-en
+
+  reranker-transformers:
+    image: cr.weaviate.io/semitechnologies/reranker-transformers:cross-encoder-ms-marco-TinyBERT-L-2-v2
+    environment:
+      ENABLE_CUDA: '1'
+      NVIDIA_VISIBLE_DEVICES: 'all'
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities:
+                - 'gpu'
+
+  app:
+    build: ./app
+    container_name: rag_app
+    depends_on:
+      - weaviate
+    ports:
+      - "8000:8000"
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      WEAVIATE_URL: http://weaviate:8080
+    volumes:
+      - ./app:/app
+    restart: on-failure:0
+
+volumes:
+  weaviate_data:

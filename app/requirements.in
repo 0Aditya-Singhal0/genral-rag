@@ -1,0 +1,7 @@
+fastapi[standard]
+uvicorn
+langchain
+openai
+weaviate-client
+python-dotenv
+pydantic
