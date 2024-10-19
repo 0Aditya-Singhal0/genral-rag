@@ -1,9 +1,8 @@
 import os
 from fastapi import FastAPI, UploadFile, File, HTTPException
-from langchain.embeddings import OpenAIEmbeddings
-from langchain.vectorstores import Weaviate
-from langchain.llms import OpenAI
-from langchain.chains import RetrievalQA
+from langchain_community.vectorstores import Weaviate
+from langchain.chains.retrieval_qa.base import RetrievalQA
+from langchain_openai import OpenAI
 from dotenv import load_dotenv
 import weaviate
 from typing import List
@@ -19,51 +18,60 @@ WEAVIATE_URL = os.getenv("WEAVIATE_URL", "http://weaviate:8080")
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY is not set in environment variables.")
 
-# Initialize Weaviate Client
-weaviate_client = weaviate.Client(url=WEAVIATE_URL)
+weaviate_client = weaviate.Client(WEAVIATE_URL)
 
 
-# Define the schema if not already present
-def define_weaviate_schema():
+# Initialize weaviate schema
+def init_weaviate_schema():
     schema = {
-        "classes": [
+        "class": "Document",
+        "description": "A collection of documents with text and filename.",
+        "properties": [
             {
-                "class": "Document",
-                "description": "A class to hold documents for RAG",
-                "properties": [
-                    {
-                        "name": "text",
-                        "dataType": ["text"],
-                        "description": "Content of the document",
-                    },
-                    {
-                        "name": "filename",
-                        "dataType": ["string"],
-                        "description": "Name of the file",
-                    },
-                ],
-            }
-        ]
+                "name": "text",
+                "dataType": ["text"],
+                "description": "Content of the document",
+            },
+            {
+                "name": "filename",
+                "dataType": ["text"],
+                "description": "Name of the file",
+            },
+        ],
+        "vectorizer": "text2vec-transformers",  # Configure the vectorizer
+        "vectorIndexType": "flat",  # Configure the vector index type
+        "moduleConfig": {
+            "text2vec-transformers": {
+                "poolingStrategy": "mean",
+                "vectorizeClassName": False,
+            },
+            "reranker-transformers": {"enabled": True},
+        },
     }
 
-    existing_schema = weaviate_client.schema.get()
-    if "classes" not in existing_schema:
-        weaviate_client.schema.create(schema)
+    if not weaviate_client.is_ready():
+        weaviate_client.connect()
+
+    if not weaviate_client.schema.exists("Document"):
+        weaviate_client.schema.create_class(schema)
+        print("Schema created successfully.")
     else:
-        classes = existing_schema["classes"]
-        class_names = [cls["class"] for cls in classes]
-        if "Document" not in class_names:
-            weaviate_client.schema.create(schema)
+        print("Schema already exists.")
+        response = weaviate_client.query.aggregate("Document").with_meta_count().do()
+        count = response["data"]["Aggregate"]["Document"][0]["meta"]["count"]
+        if count == 0:
+            print("Schema is empty. Deleting and recreating.")
+            weaviate_client.schema.delete_class("Document")
+            weaviate_client.schema.create_class(schema)
+            print("Schema recreated successfully.")
 
 
-define_weaviate_schema()
+init_weaviate_schema()
 
-# Initialize OpenAI Embeddings
-embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
 
 # Initialize VectorStore
 vector_store = Weaviate(
-    client=weaviate_client,
+    client=weaviate.Client(WEAVIATE_URL),
     index_name="Document",
     text_key="text",
     attributes=["filename"],
@@ -85,8 +93,7 @@ async def add_files(files: List[UploadFile] = File(...)):
     """
     for file in files:
         content = await file.read()
-        # Here, you should process the content to extract text.
-        # For simplicity, assuming the file is a text file.
+
         try:
             text = content.decode("utf-8")
         except UnicodeDecodeError:

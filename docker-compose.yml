@@ -79,20 +79,19 @@ services:
           devices:
             - capabilities:
                 - 'gpu'
-
-  app:
-    build: ./app
-    container_name: rag_app
-    depends_on:
-      - weaviate
-    ports:
-      - "8000:8000"
-    environment:
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      WEAVIATE_URL: http://weaviate:8080
-    volumes:
-      - ./app:/app
-    restart: on-failure:0
+  # app:
+  #   build: ./app
+  #   container_name: rag_app
+  #   depends_on:
+  #     - weaviate
+  #   ports:
+  #     - "8000:8000"
+  #   environment:
+  #     OPENAI_API_KEY: ${OPENAI_API_KEY}
+  #     WEAVIATE_URL: http://weaviate:8080
+  #   volumes:
+  #     - ./app:/app
+  #   restart: on-failure:0
 
 volumes:
   weaviate_data:

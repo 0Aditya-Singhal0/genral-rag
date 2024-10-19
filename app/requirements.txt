@@ -59,15 +59,6 @@ frozenlist==1.4.1
     #   aiosignal
 greenlet==3.1.1
     # via sqlalchemy
-grpcio==1.67.0
-    # via
-    #   grpcio-health-checking
-    #   grpcio-tools
-    #   weaviate-client
-grpcio-health-checking==1.67.0
-    # via weaviate-client
-grpcio-tools==1.67.0
-    # via weaviate-client
 h11==0.14.0
     # via
     #   httpcore
@@ -81,7 +72,6 @@ httpx==0.27.0
     #   fastapi
     #   langsmith
     #   openai
-    #   weaviate-client
 idna==3.10
     # via
     #   anyio
@@ -107,7 +97,10 @@ langchain-core==0.3.12
     # via
     #   langchain
     #   langchain-community
+    #   langchain-openai
     #   langchain-text-splitters
+langchain-openai==0.2.3
+    # via -r requirements.in
 langchain-text-splitters==0.3.0
     # via langchain
 langsmith==0.1.136
@@ -134,7 +127,7 @@ numpy==1.26.4
     #   langchain
     #   langchain-community
 openai==1.52.0
-    # via -r requirements.in
+    # via langchain-openai
 orjson==3.10.7
     # via langsmith
 packaging==24.1
@@ -143,10 +136,6 @@ packaging==24.1
     #   marshmallow
 propcache==0.2.0
     # via yarl
-protobuf==5.28.2
-    # via
-    #   grpcio-health-checking
-    #   grpcio-tools
 pycparser==2.22
     # via cffi
 pydantic==2.9.2
@@ -158,7 +147,6 @@ pydantic==2.9.2
     #   langsmith
     #   openai
     #   pydantic-settings
-    #   weaviate-client
 pydantic-core==2.23.4
     # via pydantic
 pydantic-settings==2.6.0
@@ -178,19 +166,20 @@ pyyaml==6.0.2
     #   langchain-community
     #   langchain-core
     #   uvicorn
+regex==2024.9.11
+    # via tiktoken
 requests==2.32.3
     # via
     #   langchain
     #   langchain-community
     #   langsmith
     #   requests-toolbelt
+    #   tiktoken
     #   weaviate-client
 requests-toolbelt==1.0.0
     # via langsmith
 rich==13.9.2
     # via typer
-setuptools==75.2.0
-    # via grpcio-tools
 shellingham==1.5.4
     # via typer
 sniffio==1.3.1
@@ -209,6 +198,8 @@ tenacity==9.0.0
     #   langchain
     #   langchain-community
     #   langchain-core
+tiktoken==0.8.0
+    # via langchain-openai
 tqdm==4.66.5
     # via openai
 typer==0.12.5
@@ -242,7 +233,7 @@ validators==0.34.0
     # via weaviate-client
 watchfiles==0.24.0
     # via uvicorn
-weaviate-client==4.9.0
+weaviate-client==3.26.7
     # via -r requirements.in
 websockets==13.1
     # via uvicorn
