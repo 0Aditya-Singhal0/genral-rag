@@ -5,7 +5,15 @@ from langchain.chains.retrieval_qa.base import RetrievalQA
 from langchain_openai import OpenAI
 from dotenv import load_dotenv
 import weaviate
+import logging
+import asyncio
+import uuid
+import json
 from typing import List
+
+# Initialize logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -19,6 +27,21 @@ if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY is not set in environment variables.")
 
 weaviate_client = weaviate.Client(WEAVIATE_URL)
+
+
+def delete_all_items():
+    if not weaviate_client.is_ready():
+        weaviate_client.connect()
+    # Get the schema information
+    schema_data = weaviate_client.schema.get()
+
+    # Iterate through collections
+    for collection_name in schema_data["classes"]:
+        # Delete all objects in this collection
+        weaviate_client.schema.delete_class(collection_name["class"])
+
+
+# delete_all_items()
 
 
 # Initialize weaviate schema
@@ -41,10 +64,6 @@ def init_weaviate_schema():
         "vectorizer": "text2vec-transformers",  # Configure the vectorizer
         "vectorIndexType": "flat",  # Configure the vector index type
         "moduleConfig": {
-            "text2vec-transformers": {
-                "poolingStrategy": "mean",
-                "vectorizeClassName": False,
-            },
             "reranker-transformers": {"enabled": True},
         },
     }
@@ -91,21 +110,38 @@ async def add_files(files: List[UploadFile] = File(...)):
     """
     Upload and add files to the Weaviate vector database.
     """
+    documents = []
+    metadata = []
+    ids = []
+
     for file in files:
         content = await file.read()
 
         try:
             text = content.decode("utf-8")
         except UnicodeDecodeError:
+            logger.error(f"File {file.filename} is not a valid text file.")
             raise HTTPException(
                 status_code=400,
                 detail=f"File {file.filename} is not a valid text file.",
             )
 
-        # Add to vector store
-        vector_store.add_texts(
-            [text], ids=[file.filename], metadatas=[{"filename": file.filename}]
+        documents.append(text)
+        metadata.append({"filename": file.filename})
+        ids.append(uuid.uuid4())
+
+    # Run add_texts in a separate thread to avoid blocking
+    try:
+        await asyncio.to_thread(
+            vector_store.add_texts, texts=documents, ids=ids, metadatas=metadata
         )
+        logger.info(f"Added {len(files)} files to the vector store.")
+    except Exception as e:
+        logger.error(f"Error adding files: {e}")
+        raise HTTPException(
+            status_code=500, detail="Failed to add files to the vector store."
+        )
+
     return {"status": "Files added successfully"}
 
 
