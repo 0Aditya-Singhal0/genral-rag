@@ -4,12 +4,24 @@ from langchain_community.vectorstores import Weaviate
 from langchain.chains.retrieval_qa.base import RetrievalQA
 from langchain_openai import OpenAI
 from dotenv import load_dotenv
+from pydantic import BaseModel
+from typing import List
+from enum import Enum
 import weaviate
 import logging
 import asyncio
 import uuid
-import json
-from typing import List
+
+
+class IdentifierType(str, Enum):
+    filename = "filename"
+    uuid = "uuid"
+
+
+class RemoveFilesRequest(BaseModel):
+    identifiers: List[str]
+    identifier_type: IdentifierType
+
 
 # Initialize logging
 logging.basicConfig(level=logging.INFO)
@@ -54,10 +66,16 @@ def init_weaviate_schema():
                 "name": "text",
                 "dataType": ["text"],
                 "description": "Content of the document",
+                "moduleConfig": {
+                    "text2vec-transformers": {
+                        "skip": False,
+                        "vectorizePropertyName": False,
+                    }
+                },
             },
             {
                 "name": "filename",
-                "dataType": ["text"],
+                "dataType": ["string"],
                 "description": "Name of the file",
             },
         ],
@@ -65,6 +83,10 @@ def init_weaviate_schema():
         "vectorIndexType": "flat",  # Configure the vector index type
         "moduleConfig": {
             "reranker-transformers": {"enabled": True},
+            "text2vec-transformers": {
+                "model": "sentence-transformers/multi-qa-mpnet-base-cos-v1",
+                "options": {"waitForModel": True},
+            },
         },
     }
 
@@ -73,16 +95,16 @@ def init_weaviate_schema():
 
     if not weaviate_client.schema.exists("Document"):
         weaviate_client.schema.create_class(schema)
-        print("Schema created successfully.")
+        logger.info("Schema created successfully.")
     else:
-        print("Schema already exists.")
+        logger.info("Schema already exists.")
         response = weaviate_client.query.aggregate("Document").with_meta_count().do()
         count = response["data"]["Aggregate"]["Document"][0]["meta"]["count"]
         if count == 0:
-            print("Schema is empty. Deleting and recreating.")
+            logger.info("Schema is empty. Deleting and recreating.")
             weaviate_client.schema.delete_class("Document")
             weaviate_client.schema.create_class(schema)
-            print("Schema recreated successfully.")
+            logger.info("Schema recreated successfully.")
 
 
 init_weaviate_schema()
@@ -146,15 +168,30 @@ async def add_files(files: List[UploadFile] = File(...)):
 
 
 @app.post("/remove_files/", summary="Remove files from the vector database")
-async def remove_files(file_ids: List[str]):
+async def remove_files(request: RemoveFilesRequest):
     """
-    Remove files from the Weaviate vector database by their IDs.
+    Remove files from the Weaviate vector database by their filenames or UUIDs.
     """
+    identifiers = request.identifiers
+    identifier_type = request.identifier_type
+
     try:
-        weaviate_client.batch.delete_objects(
-            class_name="Document",
-            where={"operator": "In", "path": ["filename"], "valueText": file_ids},
-        )
+        if identifier_type == IdentifierType.uuid:
+            # Delete by UUIDs
+            for obj_id in identifiers:
+                weaviate_client.data_object.delete(uuid=obj_id, class_name="Document")
+        elif identifier_type == IdentifierType.filename:
+            # Use ContainsAny operator to delete objects with matching filenames
+            weaviate_client.batch.delete_objects(
+                class_name="Document",
+                where={
+                    "operator": "ContainsAny",
+                    "path": ["filename"],
+                    "valueStringArray": identifiers,
+                },
+            )
+        else:
+            raise HTTPException(status_code=400, detail="Invalid identifier_type")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     return {"status": "Files removed successfully"}
