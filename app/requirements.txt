@@ -16,10 +16,6 @@ anyio==4.6.2.post1
     #   openai
     #   starlette
     #   watchfiles
-async-timeout==4.0.3
-    # via
-    #   aiohttp
-    #   langchain
 asyncio==3.4.3
     # via -r requirements.in
 attrs==24.2.0
@@ -49,8 +45,6 @@ dnspython==2.7.0
     # via email-validator
 email-validator==2.2.0
     # via fastapi
-exceptiongroup==1.2.2
-    # via anyio
 fastapi==0.115.2
     # via -r requirements.in
 fastapi-cli==0.0.5
@@ -152,7 +146,9 @@ pydantic==2.9.2
 pydantic-core==2.23.4
     # via pydantic
 pydantic-settings==2.6.0
-    # via langchain-community
+    # via
+    #   -r requirements.in
+    #   langchain-community
 pygments==2.18.0
     # via rich
 python-dotenv==1.0.1
@@ -208,18 +204,14 @@ typer==0.12.5
     # via fastapi-cli
 typing-extensions==4.12.2
     # via
-    #   anyio
     #   fastapi
     #   langchain-core
-    #   multidict
     #   openai
     #   pydantic
     #   pydantic-core
-    #   rich
     #   sqlalchemy
     #   typer
     #   typing-inspect
-    #   uvicorn
 typing-inspect==0.9.0
     # via dataclasses-json
 urllib3==2.2.3
