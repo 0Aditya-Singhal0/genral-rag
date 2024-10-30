@@ -33,37 +33,37 @@ services:
     image: cr.weaviate.io/semitechnologies/transformers-inference:sentence-transformers-multi-qa-mpnet-base-cos-v1
     environment:
       ENABLE_CUDA: '1'
-      NVIDIA_VISIBLE_DEVICES: 'all'
     deploy:
       resources:
         reservations:
           devices:
-            - capabilities:
-                - 'gpu'
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
   ner-transformers:
     image: cr.weaviate.io/semitechnologies/ner-transformers:dbmdz-bert-large-cased-finetuned-conll03-english
     environment:
       ENABLE_CUDA: '1'
-      NVIDIA_VISIBLE_DEVICES: 'all'
     deploy:
       resources:
         reservations:
           devices:
-            - capabilities:
-                - 'gpu'
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
   sum-transformers:
     image: cr.weaviate.io/semitechnologies/sum-transformers:facebook-bart-large-cnn-1.0.0
     environment:
       ENABLE_CUDA: '1'
-      NVIDIA_VISIBLE_DEVICES: 'all'
     deploy:
       resources:
         reservations:
           devices:
-            - capabilities:
-                - 'gpu'
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
   text-spellcheck:
     image: cr.weaviate.io/semitechnologies/text-spellcheck-model:pyspellchecker-en
@@ -73,12 +73,12 @@ services:
     environment:
       ENABLE_CUDA: '1'
       NVIDIA_VISIBLE_DEVICES: 'all'
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - capabilities:
-                - 'gpu'
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - capabilities:
+    #             - 'gpu'
   # app:
   #   build: ./app
   #   container_name: rag_app
