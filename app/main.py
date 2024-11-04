@@ -1,56 +1,34 @@
-# main.py
 import uuid
-import logging
 import asyncio
 import weaviate
 from enum import Enum
 from typing import List
+from logger import logger
+from config import settings
 
 from langchain_openai import OpenAI
 from pydantic import BaseModel, Field
-from pydantic_settings import BaseSettings
 from langchain_community.vectorstores import Weaviate
 from fastapi.security.api_key import APIKeyHeader, APIKey
 from langchain.chains.retrieval_qa.base import RetrievalQA
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, status
 
-from dotenv import load_dotenv
-
-# Load environment variables from .env file
-load_dotenv()
+# Security: API Key Authentication
+api_key_header = APIKeyHeader(name="X-API-KEY", auto_error=False)
 
 
-# Configuration Management
-class Settings(BaseSettings):
-    OPENAI_API_KEY: str
-    WEAVIATE_URL: str = "http://weaviate:8080"
-    # API_KEY: str = Field(..., env="API_KEY")
-
-    class Config:
-        env_file = ".env"
-
-
-settings = Settings()
-
-# Initialize Logging
-logging.basicConfig(
-    format="%(levelname)s: [%(asctime)s] %(name)s: %(message)s", level=logging.INFO
-)
-logger = logging.getLogger(__name__)
-
-# # Security: API Key Authentication
-# api_key_header = APIKeyHeader(name="X-API-KEY", auto_error=False)
-
-
-# async def get_api_key(api_key_header: str = Depends(api_key_header)) -> APIKey:
-#     if api_key_header == settings.API_KEY:
-#         return api_key_header
-#     else:
-#         logger.warning("Unauthorized access attempt.")
-#         raise HTTPException(
-#             status_code=status.HTTP_401_UNAUTHORIZED,
-#             detail="Invalid or missing API Key",
-#         )
+async def get_api_key(api_key_header: str = Depends(api_key_header)) -> APIKey:
+    if settings.SECURITY_ENABLED:
+        if api_key_header == settings.API_KEY:
+            return api_key_header
+        else:
+            logger.warning("Unauthorized access attempt.")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or missing API Key",
+            )
+    else:
+        return api_key_header
 
 
 # Initialize FastAPI app
@@ -166,7 +144,7 @@ def get_retrieval_qa(
 @app.post(
     "/add_files/",
     summary="Add files to the vector database",
-    # dependencies=[Depends(get_api_key)],
+    dependencies=[Depends(get_api_key)],
 )
 async def add_files(files: List[UploadFile] = File(...)):
     """
@@ -220,7 +198,7 @@ async def add_files(files: List[UploadFile] = File(...)):
 @app.post(
     "/remove_files/",
     summary="Remove files from the vector database",
-    # dependencies=[Depends(get_api_key)],
+    dependencies=[Depends(get_api_key)],
 )
 async def remove_files(request: RemoveFilesRequest):
     """
@@ -275,8 +253,7 @@ async def remove_files(request: RemoveFilesRequest):
 
 
 @app.post(
-    "/query/",
-    summary="Query the RAG system",  # dependencies=[Depends(get_api_key)]
+    "/query/", summary="Query the RAG system", dependencies=[Depends(get_api_key)]
 )
 async def query(
     prompt: str,
