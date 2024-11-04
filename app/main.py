@@ -7,6 +7,7 @@ from logger import logger
 from config import settings
 
 from langchain_openai import OpenAI
+from langchain_cohere import ChatCohere
 from pydantic import BaseModel, Field
 from langchain_community.vectorstores import Weaviate
 from fastapi.security.api_key import APIKeyHeader, APIKey
@@ -66,7 +67,7 @@ class IdentifierType(str, Enum):
 
 
 class RemoveFilesRequest(BaseModel):
-    identifiers: List[str] = Field(..., example=["file1.txt", "file2.txt"])
+    identifiers: List[str] = Field(...)
     identifier_type: IdentifierType
 
 
@@ -128,8 +129,23 @@ def get_vector_store() -> Weaviate:
     )
 
 
-def get_llm() -> OpenAI:
-    return OpenAI(openai_api_key=settings.OPENAI_API_KEY, temperature=0)
+def get_llm() -> OpenAI | ChatCohere:
+    if settings.LLM_PROVIDER.lower() == "openai":
+        return OpenAI(
+            openai_api_key=settings.OPENAI_API_KEY,
+            temperature=0,
+            model=settings.OPENAI_MODEL,
+            system_prompt=settings.SYSTEM_PROMPT,
+        )
+    elif settings.LLM_PROVIDER.lower() == "cohere":
+        return ChatCohere(
+            cohere_api_key=settings.COHERE_API_KEY,
+            temperature=0,
+            model=settings.COHERE_MODEL,
+        )
+    else:
+        logger.error(f"Unsupported LLM provider: {settings.LLM_PROVIDER}")
+        raise ValueError(f"Unsupported LLM provider: {settings.LLM_PROVIDER}")
 
 
 def get_retrieval_qa(

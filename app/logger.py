@@ -3,7 +3,7 @@ import sys
 
 
 def setup_logger() -> logging.Logger:
-    logger: logging.Logger = logging.getLogger(__name__)
+    logger: logging.Logger = logging.getLogger("app")
     logger.setLevel(logging.INFO)
 
     # Create a single handler for stdout
