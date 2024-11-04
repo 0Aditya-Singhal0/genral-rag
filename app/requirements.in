@@ -3,6 +3,7 @@ uvicorn
 langchain
 langchain-community
 langchain-openai
+langchain-cohere
 weaviate-client<4.0.0
 python-dotenv
 pydantic
