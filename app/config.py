@@ -42,6 +42,17 @@ class Settings(BaseSettings):
         "You are a helpful assistant.",
     )
 
+    # Embedding Configuration
+    EMBEDDING_PROVIDER: str = Field(
+        "local",  # Options: 'openai', 'cohere', 'local'
+    )
+    OPENAI_EMBEDDING_MODEL: str = Field(
+        "text-embedding-ada-002",
+    )
+    COHERE_EMBEDDING_MODEL: str = Field(
+        "embed-english-light-v2.0",
+    )
+
     model_config = ConfigDict(env_file=".env")
 
 

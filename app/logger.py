@@ -1,10 +1,11 @@
 import logging
 import sys
+import os
 
 
-def setup_logger() -> logging.Logger:
-    logger: logging.Logger = logging.getLogger("app")
-    logger.setLevel(logging.INFO)
+def setup_logger(name, log_level=logging.INFO) -> logging.Logger:
+    logger: logging.Logger = logging.getLogger(name)
+    logger.setLevel(log_level)
 
     # Create a single handler for stdout
     handler: logging.StreamHandler = logging.StreamHandler(sys.stdout)
@@ -33,4 +34,4 @@ def setup_logger() -> logging.Logger:
 
 
 # Instantiate logger
-logger: logging.Logger = setup_logger()
+logger = setup_logger(os.path.basename(os.path.dirname(__file__)), logging.INFO)

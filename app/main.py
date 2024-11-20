@@ -6,38 +6,14 @@ from typing import List
 from logger import logger
 from config import settings
 
-from langchain_openai import OpenAI
-from langchain_cohere import ChatCohere
 from pydantic import BaseModel, Field
-from langchain_community.vectorstores import Weaviate
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_cohere import ChatCohere, CohereEmbeddings
 from fastapi.security.api_key import APIKeyHeader, APIKey
 from langchain.chains.retrieval_qa.base import RetrievalQA
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.vectorstores import Weaviate as LangchainWeaviate
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, status
-
-# Security: API Key Authentication
-api_key_header = APIKeyHeader(name="X-API-KEY", auto_error=False)
-
-
-async def get_api_key(api_key_header: str = Depends(api_key_header)) -> APIKey:
-    if settings.SECURITY_ENABLED:
-        if api_key_header == settings.API_KEY:
-            return api_key_header
-        else:
-            logger.warning("Unauthorized access attempt.")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or missing API Key",
-            )
-    else:
-        return api_key_header
-
-
-# Initialize FastAPI app
-app = FastAPI(
-    title="Weaviate RAG Application",
-    description="A production-ready FastAPI application integrating Weaviate, LangChain, and OpenAI for Retrieval-Augmented Generation (RAG).",
-    version="1.0.0",
-)
 
 # Initialize Weaviate Client
 weaviate_client = weaviate.Client(settings.WEAVIATE_URL)
@@ -46,18 +22,6 @@ weaviate_client = weaviate.Client(settings.WEAVIATE_URL)
 # Exception Handling
 class WeaviateConnectionError(Exception):
     pass
-
-
-@app.on_event("startup")
-async def startup_event():
-    try:
-        if not weaviate_client.is_ready():
-            weaviate_client.connect()
-            logger.info("Connected to Weaviate successfully.")
-        init_weaviate_schema()
-    except Exception as e:
-        logger.error(f"Failed to connect to Weaviate: {e}")
-        raise WeaviateConnectionError("Cannot connect to Weaviate database.")
 
 
 # Define Enums and Models
@@ -69,6 +33,20 @@ class IdentifierType(str, Enum):
 class RemoveFilesRequest(BaseModel):
     identifiers: List[str] = Field(...)
     identifier_type: IdentifierType
+
+
+def delete_all_items():
+    if not weaviate_client.is_ready():
+        weaviate_client.connect()
+    # Get the schema information
+    schema_data = weaviate_client.schema.get()
+    # Iterate through collections
+    for collection_name in schema_data["classes"]:
+        # Delete all objects in this collection
+        weaviate_client.schema.delete_class(collection_name["class"])
+
+
+# delete_all_items()
 
 
 # Initialize Weaviate Schema
@@ -92,6 +70,17 @@ def init_weaviate_schema():
                 "name": "filename",
                 "dataType": ["string"],
                 "description": "Name of the file",
+            },
+            {
+                "name": "short_summary",
+                "dataType": ["text"],
+                "description": "A brief summary of the document",
+                "moduleConfig": {
+                    "text2vec-transformers": {
+                        "skip": True,  # Skip vectorization for this property
+                        "vectorizePropertyName": False,
+                    }
+                },
             },
         ],
         "vectorizer": "text2vec-transformers",
@@ -119,23 +108,46 @@ def init_weaviate_schema():
             logger.info("Weaviate schema 'Document' recreated successfully.")
 
 
-# Dependency Injection for VectorStore, LLM, and QA
-def get_vector_store() -> Weaviate:
-    return Weaviate(
+def get_embeddings():
+    if settings.EMBEDDING_PROVIDER.lower() == "openai":
+        if not settings.OPENAI_API_KEY:
+            raise ValueError("OpenAI API key is required for OpenAI embeddings.")
+        return OpenAIEmbeddings(
+            openai_api_key=settings.OPENAI_API_KEY,
+            model=settings.OPENAI_EMBEDDING_MODEL,
+        )
+    elif settings.EMBEDDING_PROVIDER.lower() == "cohere":
+        if not settings.COHERE_API_KEY:
+            raise ValueError("Cohere API key is required for Cohere embeddings.")
+        return CohereEmbeddings(
+            cohere_api_key=settings.COHERE_API_KEY,
+            model=settings.COHERE_EMBEDDING_MODEL,
+        )
+    elif settings.EMBEDDING_PROVIDER.lower() == "local":
+        return
+    else:
+        logger.error(f"Unsupported Embedding provider: {settings.EMBEDDING_PROVIDER}")
+        raise ValueError(
+            f"Unsupported Embedding provider: {settings.EMBEDDING_PROVIDER}"
+        )
+
+
+def get_vector_store() -> LangchainWeaviate:
+    return LangchainWeaviate(
         client=weaviate_client,
         index_name="Document",
         text_key="text",
-        attributes=["filename"],
+        attributes=["filename", "short_summary"],
+        embedding=get_embeddings(),
     )
 
 
-def get_llm() -> OpenAI | ChatCohere:
+def get_llm() -> ChatOpenAI | ChatCohere:
     if settings.LLM_PROVIDER.lower() == "openai":
-        return OpenAI(
+        return ChatOpenAI(
             openai_api_key=settings.OPENAI_API_KEY,
             temperature=0,
             model=settings.OPENAI_MODEL,
-            system_prompt=settings.SYSTEM_PROMPT,
         )
     elif settings.LLM_PROVIDER.lower() == "cohere":
         return ChatCohere(
@@ -149,11 +161,49 @@ def get_llm() -> OpenAI | ChatCohere:
 
 
 def get_retrieval_qa(
-    llm: OpenAI = Depends(get_llm), vector_store: Weaviate = Depends(get_vector_store)
+    llm: ChatOpenAI | ChatCohere = Depends(get_llm),
+    vector_store: LangchainWeaviate = Depends(get_vector_store),
 ) -> RetrievalQA:
     return RetrievalQA.from_chain_type(
         llm=llm, chain_type="stuff", retriever=vector_store.as_retriever()
     )
+
+
+# Initialize FastAPI app
+app = FastAPI(
+    title="Weaviate RAG Application",
+    description="A production-ready FastAPI application integrating Weaviate, LangChain, and OpenAI for Retrieval-Augmented Generation (RAG).",
+    version="1.0.0",
+)
+
+# Security: API Key Authentication
+api_key_header = APIKeyHeader(name="X-API-KEY", auto_error=False)
+
+
+async def get_api_key(api_key_header: str = Depends(api_key_header)) -> APIKey:
+    if settings.SECURITY_ENABLED:
+        if api_key_header == settings.API_KEY:
+            return api_key_header
+        else:
+            logger.warning("Unauthorized access attempt.")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or missing API Key",
+            )
+    else:
+        return api_key_header
+
+
+@app.on_event("startup")
+async def startup_event():
+    try:
+        if not weaviate_client.is_ready():
+            weaviate_client.connect()
+            logger.info("Connected to Weaviate successfully.")
+        init_weaviate_schema()
+    except Exception as e:
+        logger.error(f"Failed to connect to Weaviate: {e}")
+        raise WeaviateConnectionError("Cannot connect to Weaviate database.")
 
 
 # API Endpoints
@@ -174,14 +224,15 @@ async def add_files(files: List[UploadFile] = File(...)):
     metadata = []
     ids = []
 
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000,  # Adjust chunk size as needed
+        chunk_overlap=200,  # Adjust overlap as needed
+    )
+
     for file in files:
         content = await file.read()
         if not content:
             logger.warning(f"File {file.filename} is empty.")
-            raise HTTPException(
-                status_code=400,
-                detail=f"File {file.filename} is empty.",
-            )
         try:
             text = content.decode("utf-8")
         except UnicodeDecodeError:
@@ -190,10 +241,12 @@ async def add_files(files: List[UploadFile] = File(...)):
                 status_code=400,
                 detail=f"File {file.filename} is not a valid UTF-8 text file.",
             )
-
-        documents.append(text)
-        metadata.append({"filename": file.filename})
-        ids.append(str(uuid.uuid4()))
+        # Split text into chunks
+        chunks = text_splitter.split_text(text)
+        for chunk in chunks:
+            documents.append(chunk)
+            metadata.append({"filename": file.filename})
+            ids.append(str(uuid.uuid4()))
 
     vector_store = get_vector_store()
 
@@ -203,7 +256,7 @@ async def add_files(files: List[UploadFile] = File(...)):
         )
         logger.info(f"Successfully added {len(files)} files to the vector store.")
     except Exception as e:
-        logger.exception("Error adding files to the vector store.")
+        logger.exception(f"Error adding files to the vector store -> {e}")
         raise HTTPException(
             status_code=500, detail="Failed to add files to the vector store."
         )
@@ -257,12 +310,14 @@ async def remove_files(request: RemoveFilesRequest):
             logger.error(f"Invalid identifier_type: {identifier_type}")
             raise HTTPException(status_code=400, detail="Invalid identifier_type")
     except weaviate.exceptions.WeaviateException as e:
-        logger.exception("Weaviate exception occurred during file removal.")
+        logger.exception(
+            f"Weaviate exception occurred during file removal -> {e}", exc_info=True
+        )
         raise HTTPException(
             status_code=500, detail="Failed to remove files from the vector store."
         )
     except Exception as e:
-        logger.exception("Unexpected error during file removal.")
+        logger.exception(f"Unexpected error during file removal -> {e}")
         raise HTTPException(status_code=500, detail="An unexpected error occurred.")
 
     return {"status": "Files removed successfully", "removed_count": len(identifiers)}
@@ -282,11 +337,15 @@ async def query(
         logger.warning("Empty prompt received.")
         raise HTTPException(status_code=400, detail="Prompt cannot be empty.")
 
+    # Inspect and log the context (you can modify based on what you're sending)
+    retriever_context = qa.retriever.get_relevant_documents(prompt)
+    logger.info(f"Context retrieved: {retriever_context}")
+
     try:
         response = await asyncio.to_thread(qa.run, prompt)
         logger.info("Successfully processed query.")
     except Exception as e:
-        logger.exception("Error processing the query.")
+        logger.exception(f"Error processing the query -> {e}")
         raise HTTPException(status_code=500, detail="Failed to process the query.")
 
     return {"response": response}
