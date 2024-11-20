@@ -1,6 +1,7 @@
 import uuid
 import asyncio
 import weaviate
+import pymupdf
 from enum import Enum
 from typing import List
 from logger import logger
@@ -233,8 +234,27 @@ async def add_files(files: List[UploadFile] = File(...)):
         content = await file.read()
         if not content:
             logger.warning(f"File {file.filename} is empty.")
+            continue
+
+        file_extension = file.filename.split(".")[-1].lower()
+
+        if file_extension not in ["pdf", "txt"]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{file_extension} is not a supported file type.",
+            )
+
         try:
-            text = content.decode("utf-8")
+            if file_extension == "pdf":
+                pdf_document = pymupdf.open(stream=content, filetype="pdf")
+                text = ""
+                for page_num in range(pdf_document.page_count):
+                    page = pdf_document.load_page(page_num)
+                    text += page.get_text()
+
+            else:
+                # Assume text file
+                text = content.decode("utf-8")
         except UnicodeDecodeError:
             logger.error(f"File {file.filename} is not a valid UTF-8 text file.")
             raise HTTPException(
