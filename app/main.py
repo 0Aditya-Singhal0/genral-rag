@@ -36,6 +36,11 @@ class RemoveFilesRequest(BaseModel):
     identifier_type: IdentifierType
 
 
+# Define the Pydantic model for the request body
+class QueryRequest(BaseModel):
+    prompt: str
+
+
 def delete_all_items():
     if not weaviate_client.is_ready():
         weaviate_client.connect()
@@ -147,13 +152,13 @@ def get_llm() -> ChatOpenAI | ChatCohere:
     if settings.LLM_PROVIDER.lower() == "openai":
         return ChatOpenAI(
             openai_api_key=settings.OPENAI_API_KEY,
-            temperature=0,
+            temperature=0.1,
             model=settings.OPENAI_MODEL,
         )
     elif settings.LLM_PROVIDER.lower() == "cohere":
         return ChatCohere(
             cohere_api_key=settings.COHERE_API_KEY,
-            temperature=0,
+            temperature=0.1,
             model=settings.COHERE_MODEL,
         )
     else:
@@ -347,22 +352,23 @@ async def remove_files(request: RemoveFilesRequest):
     "/query/", summary="Query the RAG system", dependencies=[Depends(get_api_key)]
 )
 async def query(
-    prompt: str,
+    request: QueryRequest,
     qa: RetrievalQA = Depends(get_retrieval_qa),
 ):
     """
     Query the RAG system with a prompt. Each prompt is treated independently (0 memory).
     """
+    prompt = request.prompt
     if not prompt.strip():
         logger.warning("Empty prompt received.")
         raise HTTPException(status_code=400, detail="Prompt cannot be empty.")
 
     # Inspect and log the context (you can modify based on what you're sending)
-    retriever_context = qa.retriever.get_relevant_documents(prompt)
+    retriever_context = qa.retriever.invoke(prompt)
     logger.info(f"Context retrieved: {retriever_context}")
 
     try:
-        response = await asyncio.to_thread(qa.run, prompt)
+        response = await asyncio.to_thread(qa.invoke, prompt)
         logger.info("Successfully processed query.")
     except Exception as e:
         logger.exception(f"Error processing the query -> {e}")
