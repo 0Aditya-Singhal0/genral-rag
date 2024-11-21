@@ -74,5 +74,4 @@ def clear_chat():
 
 # Render chat interface and clear button
 chat_interface()
-st.sidebar.markdown("---")
 clear_chat()
